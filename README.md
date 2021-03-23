@@ -2,9 +2,8 @@
 
 This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI. It includes the following files and folders:
 
-- functions - Code for the application's Lambda functions to check the value of, buy, or sell shares of a stock.
-- statemachines - Definition for the state machine that orchestrates the stock trading workflow.
-- tests - Unit tests for the Lambda functions' application code.
+- functions - Code for the application's Lambda functions to create and delete test users, and trigger authorized requests for API Gateway endpoint.
+- statemachines - Definition for the state machine that orchestrates the load testing workflow.
 - template.yaml - A template that defines the application's AWS resources.
 
 This example creates a Stepfunction workflow that sets up the infrastructure for running a load test with Cognito users against an API Gateway endpoint that is configured to use Cognito authorizer.
