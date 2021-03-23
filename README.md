@@ -58,7 +58,7 @@ The first command will build the source of your application. The second command 
 Build the Lambda functions in your application with the `sam build --use-container` command.
 
 ```bash
-apiloadtestsam$ sam build --use-container
+sam-apiloadtest$ sam build --use-container
 ```
 
 The SAM CLI installs dependencies defined in `functions/*/requirements.txt`, creates a deployment package, and saves it in the `.aws-sam/build` folder.
