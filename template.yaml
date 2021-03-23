@@ -1,0 +1,460 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  apiloadtest-sam
+
+  SAM Template for Serverless API Gateway Load Testing Framework
+Parameters:
+  apiGatewayUrl:
+    Type: String
+    Description: API Gateway URL being load tested.
+Resources:
+  createUsersAndFanOut:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Role:
+        Fn::GetAtt:
+          - createUsersAndFanOutRole
+          - Arn
+      DefinitionUri: statemachine/createUsersAndFanOut.asl.json
+      DefinitionSubstitutions:
+        createTestUserIds: 
+          Fn::GetAtt:
+            - createTestUserIds
+            - Arn
+        createTestUsers: 
+          Fn::GetAtt:
+            - createTestUsers
+            - Arn
+        triggerLoadTestPerUser: 
+          Fn::GetAtt:
+            - triggerLoadTestPerUser
+            - Arn
+      Logging:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn:
+                Fn::GetAtt:
+                  - CreateUsersAndFanOutLogGroup
+                  - Arn
+        Level: ALL
+    DependsOn:
+      - createUsersAndFanOutRoleDefaultPolicy
+      - createUsersAndFanOutRole
+  deleteTestUsers:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Role:
+        Fn::GetAtt:
+          - deleteTestUsersRole
+          - Arn
+      DefinitionUri: statemachine/deleteTestUsers.asl.json
+      DefinitionSubstitutions:
+        cleanUpTestUsers: 
+          Fn::GetAtt:
+            - cleanUpTestUsers
+            - Arn
+      Logging:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn:
+                Fn::GetAtt:
+                  - CleanUpTaskLogGroup
+                  - Arn
+        Level: ALL
+    DependsOn:
+      - deleteTestUsersRoleDefaultPolicy
+      - deleteTestUsersRole
+  createTestUsers:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/createTestUsers/
+      Role:
+        Fn::GetAtt:
+          - createTestUsersServiceRole
+          - Arn
+      Environment:
+        Variables:
+          client_id:
+            Ref: cognitoUserPoolClient
+          userpool_id:
+            Ref: cognitoUserPool
+      Handler: lambda_function.lambda_handler
+      Layers:
+        - Ref: secretsLayer
+      MemorySize: 856
+      Runtime: python3.8
+      Timeout: 900
+    DependsOn:
+      - createTestUsersServiceRole
+  triggerLoadTestPerUser:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/triggerLoadTestPerUser/
+      Role:
+        Fn::GetAtt:
+          - triggerLoadTestPerUserServiceRole
+          - Arn
+      Environment:
+        Variables:
+          client_id:
+            Ref: cognitoUserPoolClient
+          userpool_id:
+            Ref: cognitoUserPool
+          api_url:
+            Ref: apiGatewayUrl
+      Handler: lambda_function.lambda_handler
+      Layers:
+        - Ref: secretsLayer
+      MemorySize: 256
+      Runtime: python3.8
+      Timeout: 900
+    DependsOn:
+      - triggerLoadTestPerUserServiceRole
+  createTestUserIds:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/createTestUserIds/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+  secretsLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      Content: layers/
+      CompatibleRuntimes:
+        - python3.8
+      Description: A layer for secret manager core functions
+      LicenseInfo: Apache-2.0
+  cleanUpTestUsers:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/cleanUpTestUsers/
+      Role:
+        Fn::GetAtt:
+          - cleanUpTestUsersServiceRole
+          - Arn
+      Environment:
+        Variables:
+          client_id:
+            Ref: cognitoUserPoolClient
+          userpool_id:
+            Ref: cognitoUserPool
+      Handler: lambda_function.lambda_handler
+      Layers:
+        - Ref: secretsLayer
+      MemorySize: 512
+      Runtime: python3.8
+      Timeout: 600
+    DependsOn:
+      - cleanUpTestUsersServiceRole
+  customEmailSender:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/customEmailSender/
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+  cognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: apiloadtestuserpool
+      LambdaConfig:
+        CustomEmailSender:
+            LambdaArn: 
+              Fn::GetAtt:
+                - customEmailSender
+                - Arn
+            LambdaVersion: V1_0
+        KMSKeyID: 
+          Fn::GetAtt:
+            - customEmailSenderKey
+            - Arn
+  cognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId:
+        Ref: cognitoUserPool
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - aws.cognito.signin.user.admin
+      CallbackURLs:
+        - https://example.com
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+  customEmailSenderPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+          - customEmailSender
+          - Arn
+      Principal: cognito-idp.amazonaws.com
+  customEmailSenderKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Statement:
+          - Action:
+              - kms:Create*
+              - kms:Describe*
+              - kms:Enable*
+              - kms:List*
+              - kms:Put*
+              - kms:Update*
+              - kms:Revoke*
+              - kms:Disable*
+              - kms:Get*
+              - kms:Delete*
+              - kms:ScheduleKeyDeletion
+              - kms:CancelKeyDeletion
+              - kms:GenerateDataKey
+              - kms:TagResource
+              - kms:UntagResource
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":iam::"
+                    - Ref: AWS::AccountId
+                    - :root
+            Resource: "*"
+        Version: "2012-10-17"
+
+  secretsLayeraccountgrant:
+    Type: AWS::Lambda::LayerVersionPermission
+    Properties:
+      Action: lambda:GetLayerVersion
+      LayerVersionArn:
+        Ref: secretsLayer
+      Principal:
+        Ref: AWS::AccountId
+        
+  CreateUsersAndFanOutLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 731
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+  createUsersAndFanOutRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                Fn::Join:
+                  - ""
+                  - - states.
+                    - Ref: AWS::Region
+                    - .amazonaws.com
+        Version: "2012-10-17"
+  CleanUpTaskLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 731
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+  deleteTestUsersRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                Fn::Join:
+                  - ""
+                  - - states.
+                    - Ref: AWS::Region
+                    - .amazonaws.com
+        Version: "2012-10-17"
+        
+  cleanUpTestUsersServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/SecretsManagerReadWrite
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/AmazonCognitoPowerUser
+
+  createTestUsersServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/SecretsManagerReadWrite
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/AmazonCognitoPowerUser
+
+  triggerLoadTestPerUserServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/SecretsManagerReadWrite
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/AmazonCognitoPowerUser
+
+  createUsersAndFanOutRoleDefaultPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Effect: Allow
+            Resource: "*"
+          - Action: lambda:InvokeFunction
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - createTestUserIds
+                - Arn
+          - Action: lambda:InvokeFunction
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - createTestUsers
+                - Arn
+          - Action: lambda:InvokeFunction
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - triggerLoadTestPerUser
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: createUsersAndFanOutRoleDefaultPolicy
+      Roles:
+        - Ref: createUsersAndFanOutRole
+
+  deleteTestUsersRoleDefaultPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - logs:CreateLogDelivery
+              - logs:GetLogDelivery
+              - logs:UpdateLogDelivery
+              - logs:DeleteLogDelivery
+              - logs:ListLogDeliveries
+              - logs:PutResourcePolicy
+              - logs:DescribeResourcePolicies
+              - logs:DescribeLogGroups
+            Effect: Allow
+            Resource: "*"
+          - Action: lambda:InvokeFunction
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - cleanUpTestUsers
+                - Arn
+        Version: "2012-10-17"
+      PolicyName: deleteTestUsersRoleDefaultPolicy
+      Roles:
+        - Ref: deleteTestUsersRole
+
+
+Outputs:
+  UserPoolID:
+    Description: User Pool ID
+    Value:
+      Ref: cognitoUserPool
+    Export:
+      Name: UserPoolID
+  AppClientID:
+    Description: App Client ID
+    Value:
+      Ref: cognitoUserPoolClient
+    Export:
+      Name: AppClientID
+  KMSKey:
+    Description: CustomEmailSender KMS Key ARN
+    Value:
+      Fn::GetAtt:
+        - customEmailSenderKey
+        - Arn
+    Export:
+      Name: CustomEmailSenderKMSKey
+  CustomEmailSenderLambda:
+    Description: CustomEmailSender lambda function
+    Value:
+      Fn::GetAtt:
+        - customEmailSender
+        - Arn
+    Export:
+      Name: CustomEmailSenderLambdaARN
+

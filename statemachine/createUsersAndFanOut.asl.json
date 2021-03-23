@@ -1,0 +1,111 @@
+{
+  "StartAt": "Is Input Valid?",
+  "States": {
+    "Is Input Valid?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.users.NumberOfUsers",
+          "NumericGreaterThan": 1000,
+          "Next": "Input validation failed"
+        },
+        {
+          "Variable": "$.users.NumberOfCallsPerUser",
+          "NumericGreaterThan": 1000,
+          "Next": "Input validation failed"
+        }
+      ],
+      "Default": "CreateTestUserIds"
+    },
+    "CreateTestUserIds": {
+      "Next": "CreateTestUsers",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "Type": "Task",
+      "InputPath": "$.users",
+      "ResultPath": "$.taskResult",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${createTestUserIds}",
+        "Payload.$": "$"
+      }
+    },
+    "CreateTestUsers": {
+      "Next": "LoadTestFanOut",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "Type": "Task",
+      "InputPath": "$.users",
+      "OutputPath": "$.taskResult.Payload.userNames",
+      "ResultPath": "$.createResult",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${createTestUsers}",
+        "Payload.$": "$"
+      }
+    },
+    "LoadTestFanOut": {
+      "Type": "Map",
+      "ResultPath": null,
+      "Next": "TestComplete",
+      "InputPath": "$",
+      "Iterator": {
+        "StartAt": "TriggerLoadTest",
+        "States": {
+          "TriggerLoadTest": {
+            "End": true,
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 6,
+                "BackoffRate": 2
+              }
+            ],
+            "Type": "Task",
+            "ResultPath": null,
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "${triggerLoadTestPerUser}",
+              "Payload.$": "$"
+            }
+          }
+        }
+      },
+      "MaxConcurrency": 0
+    },
+    "TestComplete": {
+      "Type": "Pass",
+      "End": true
+    },
+    "Input validation failed": {
+      "Type": "Fail",
+      "Error": "NumberOfUsers > 1000 OR NumberOfCallsPerUser > 1000",
+      "Cause": "Input Validation Failed. Please ensure NumberOfUser & NumberOfCallsPerUser do not exceed limits."
+    }
+  }
+}

@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "apiloadtest-sam"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1gmxr0felf6ij"
+s3_prefix = "apiloadtest-sam"
+region = "us-east-2"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "apiGatewayUrl=\"https://05kiavryk3.execute-api.us-east-2.amazonaws.com/admin\""

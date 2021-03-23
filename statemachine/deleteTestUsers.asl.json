@@ -1,0 +1,30 @@
+{
+  "StartAt": "CleanUpTask",
+  "States": {
+    "CleanUpTask": {
+      "Next": "TestCleanUpComplete",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${cleanUpTestUsers}",
+        "Payload.$": "$"
+      }
+    },
+    "TestCleanUpComplete": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}
