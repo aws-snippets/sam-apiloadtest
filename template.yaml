@@ -83,7 +83,7 @@ Resources:
       Layers:
         - Ref: secretsLayer
       MemorySize: 856
-      Runtime: python3.8
+      Runtime: python3.7
       Timeout: 900
     DependsOn:
       - createTestUsersServiceRole
@@ -107,7 +107,7 @@ Resources:
       Layers:
         - Ref: secretsLayer
       MemorySize: 256
-      Runtime: python3.8
+      Runtime: python3.7
       Timeout: 900
     DependsOn:
       - triggerLoadTestPerUserServiceRole
@@ -116,13 +116,13 @@ Resources:
     Properties:
       CodeUri: functions/createTestUserIds/
       Handler: lambda_function.lambda_handler
-      Runtime: python3.8
+      Runtime: python3.7
   secretsLayer:
     Type: AWS::Lambda::LayerVersion
     Properties:
       Content: layers/
       CompatibleRuntimes:
-        - python3.8
+        - python3.7
       Description: A layer for secret manager core functions
       LicenseInfo: Apache-2.0
   cleanUpTestUsers:
@@ -143,7 +143,7 @@ Resources:
       Layers:
         - Ref: secretsLayer
       MemorySize: 512
-      Runtime: python3.8
+      Runtime: python3.7
       Timeout: 600
     DependsOn:
       - cleanUpTestUsersServiceRole
@@ -152,7 +152,7 @@ Resources:
     Properties:
       CodeUri: functions/customEmailSender/
       Handler: lambda_function.lambda_handler
-      Runtime: python3.8
+      Runtime: python3.7
   cognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
